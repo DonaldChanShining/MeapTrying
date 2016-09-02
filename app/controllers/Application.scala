@@ -2,22 +2,33 @@ package controllers
 
 import javax.inject.Inject
 
-import org.jooq.{SQLDialect, DSLContext}
-import org.jooq.impl.DSL
+import akka.actor.ActorSystem
+import helpers.Database
 import play.api.data._
 import play.api.data.Forms._
-import play.api.db._
+
+import scala.concurrent.Future
 import play.api.i18n.{I18nSupport, MessagesApi}
-import play.api.mvc.{Result, Action, Controller}
+import play.api.mvc.{Action, Controller}
 import generated.Tables._
 import generated.tables.records._
+import play.api.libs.Crypto
+import scala.concurrent.ExecutionContext.Implicits.global
 
 
-class Application @Inject() (val db:Database,val messagesApi: MessagesApi) extends Controller with I18nSupport{
+@Singleton
+class Application @Inject() (val db:Database,
+                             val messagesApi: MessagesApi,
+                             val crypto: Crypto,implicit val system: ActorSystem) extends Controller with I18nSupport{
 
-  def queryAll = Action { request =>
+  def queryAll = Action.async { request =>
 
-    db.withConnection { connection =>
+    db.query{dsl =>
+      val users = dsl.selectFrom[UserRecord](USER).fetch()
+      Ok(users.toString)
+    }
+
+   /* db.withConnection { connection =>
 
       val sql:DSLContext = DSL.using(connection,SQLDialect.POSTGRES_9_4)
 
@@ -25,7 +36,7 @@ class Application @Inject() (val db:Database,val messagesApi: MessagesApi) exten
 
       Ok(users.toString)
 
-    }
+    }*/
   }
 
   def login = Action { implicit request =>
@@ -41,26 +52,26 @@ class Application @Inject() (val db:Database,val messagesApi: MessagesApi) exten
     )
   )
 
-  def authenticate  = Action { implicit request =>
-    Ok
+  def authenticate  = Action.async { implicit request =>
 /*    loginForm.bindFromRequest.fold(
       formWithErrors =>
         BadRequest(views.html.login(formWithErrors))
       login =>
 
     )*/
-/*    loginForm.bindFromRequest.fold(
+    loginForm.bindFromRequest.fold(
       formWithErrors =>
-        BadRequest(views.html.login(formWithErrors)),
+        Future(BadRequest(views.html.login(formWithErrors))),
       login =>
-        db.withConnection { connection =>
-          val sql = DSL.using(connection, SQLDialect.POSTGRES_9_4)
+        //db.withConnection { connection =>
+        //val sql = DSL.using(connection, SQLDialect.POSTGRES_9_4)
+        db.query{ sql =>
           val users = Option(sql
             .selectFrom[UserRecord](USER)
             .where(USER.EMAIL.equal(login._1))
             .and(USER.PASSWORD.equal(crypto.sign(login._2)))
             .fetchOne())
-          user.map { u =>
+          users.map { u =>
             Ok(s"Hello ${u.getFirstname}")
           } getOrElse {
             BadRequest(
@@ -70,7 +81,7 @@ class Application @Inject() (val db:Database,val messagesApi: MessagesApi) exten
             )
           }
         }
-    )*/
+    )
   }
 
 
