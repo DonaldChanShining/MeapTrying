@@ -5,19 +5,21 @@ import javax.inject.Inject
 import akka.actor.ActorSystem
 import helpers.Database
 import play.api.data._
+import play.api.cache.CacheApi
 import play.api.data.Forms._
 
 import scala.concurrent.Future
 import play.api.i18n.{I18nSupport, MessagesApi}
-import play.api.mvc.{Action, Controller}
+import play.api.mvc.{Result, _}
 import generated.Tables._
 import generated.tables.records._
 import play.api.libs.Crypto
+
 import scala.concurrent.ExecutionContext.Implicits.global
 
 
-@Singleton
 class Application @Inject() (val db:Database,
+                             val cache: CacheApi,
                              val messagesApi: MessagesApi,
                              val crypto: Crypto,implicit val system: ActorSystem) extends Controller with I18nSupport{
 
@@ -72,7 +74,12 @@ class Application @Inject() (val db:Database,
             .and(USER.PASSWORD.equal(crypto.sign(login._2)))
             .fetchOne())
           users.map { u =>
-            Ok(s"Hello ${u.getFirstname}")
+      //      Ok(s"Hello ${u.getFirstname}")
+            Redirect(routes.Application.index()).withSession(
+              USER.ID.getName -> u.getId.toString,
+              USER.FIRSTNAME.getName -> u.getFirstname,
+              USER.LASTNAME.getName -> u.getLastname
+            )
           } getOrElse {
             BadRequest(
               views.html.login(
@@ -84,20 +91,65 @@ class Application @Inject() (val db:Database,
     )
   }
 
+  def fetchUser(id: Long) =
+    cache.get[UserRecord](id.toString).map { user =>
+      Some(user)
+    } getOrElse {
+      db.query { sql =>
+        val user = Option(
+          sql.selectFrom[UserRecord](USER)
+            .where(USER.ID.equal(id))
+            .fetchOne()
+        )
+        user.foreach { u =>
+          cache.set(u.getId.toString, u)
+        }
+        user
+      }
+    }
 
 
+  def index = Authenticated { request =>
+    Ok(views.html.index(request.firstName))
+
+  }
 
 
-
+/*
   def index = Action {
 
     Ok(views.html.index("Your new application is ready."))
 
-  }
+  }*/
 
   def noob = Action {
     Ok("ha,noob man!")
   }
 
 
+}
+
+case class AuthenticatedRequest[A](userId:Long,firstName:String,lastName:String)
+
+object Authenticated extends ActionBuilder[AuthenticatedRequest] with Results{
+
+
+
+  override def invokeBlock[A](request: Request[A], block: (AuthenticatedRequest[A]) => Future[Result]): Future[Result] = {
+    val authenticated = for{
+      id <- request.session.get(USER.ID.getName)
+      firstName <- request.session.get(USER.FIRSTNAME.getName)
+      lastName <- request.session.get(USER.LASTNAME.getName)
+    } yield {
+      AuthenticatedRequest[A](id.toLong,firstName,lastName)
+    }
+
+    authenticated.map{ authenticatedRequest =>
+      block(authenticatedRequest)
+    } getOrElse {
+      Future.successful {
+        Redirect(routes.Application.login()).withNewSession
+      }
+    }
+  }
 }

@@ -11,6 +11,12 @@ import scala.concurrent.ExecutionContext
   */
 object Contexts {
 
-  implicit val database: ExecutionContext = Akka.system.dispatchers.lookup("contexts.database")
+  implicit val app = play.api.Play.current
+
+  val database: ExecutionContext = Akka.system.dispatchers.lookup("contexts.database")
+
+ // val myExecutionContext: ExecutionContext = akka.System.dispatchers.lookup("my-context")
+
+
 
 }

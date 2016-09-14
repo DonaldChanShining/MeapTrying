@@ -19,6 +19,7 @@ libraryDependencies ++= Seq(
   "org.jooq" % "jooq" % "3.6.0",
   "org.jooq" % "jooq-codegen-maven" % "3.6.0",
   "org.jooq" % "jooq-meta" % "3.6.0",
+  "com.github.mumoshu" %% "play2-memcached-play24" % "0.7.0",
   specs2 % Test )
 
 val generateJOOQ = taskKey[Seq[File]]("Generate JooQ classes")
